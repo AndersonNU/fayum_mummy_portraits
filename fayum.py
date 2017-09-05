@@ -36,7 +36,7 @@ start_time = time.time()
 
 use_cuda = torch.cuda.is_available()
 dtype = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
-dtype = torch.FloatTensor
+# dtype = torch.FloatTensor
 
 ######################################################################
 # Load images
@@ -114,7 +114,7 @@ class GramMatrix(nn.Module):
         a, b, c, d = input.size()  # a=batch size(=1)
         # b=number of feature maps
         # (c,d)=dimensions of a f. map (N=c*d)
-        print('c is', c, ' and d is', d)
+        # print('c is', c, ' and d is', d)
         features = input.view(a * b, c * d)  # resise F_XL into \hat F_XL
 
         G = torch.mm(features, features.t())  # compute the gram product
@@ -284,18 +284,41 @@ num_images = len(image_list)
 num_images = 1
 vector = []
 # for filename in filenames:
-for i in range(2):
+for i in range(len(filenames)):
+# for i in range(4):
+
     style_img = image_loader(filenames[i]).type(dtype)
     # style_img = image_list[i]
     matrix = get_style_model_and_matrix(cnn, style_img)
+    print(type(matrix))
+    print('the size of matrix is:', len(matrix))
     # print('The size of the first style layer we want is', matrix[0].size())
-    # print(type(matrix))
-    # First Art layer
-    # vector_0 = matrix[0].data.numpy()
-    # [np.triu_indices(len(matrix[0]))].reshape(1, -1)
+    # For each image, vectorizing all the gram matrix and append them together
+    gram_vector = torch.FloatTensor()
+    gram_vector = gram_vector.cuda()
+    print('the type of gram_vector is', type(gram_vector))
+    for j in range(len(matrix)):
+        triu_indices = torch.nonzero(matrix[j].data).transpose(0, 1)
+        # gram_vector.append(matrix[j][triu_indices[0], triu_indices[1]])
+        # Get the vectorized upper Gram matrix
+        gram_vector_new = matrix[j][triu_indices[0], triu_indices[1]].data.view(1, -1)
+        # gram_vector_new = gram_vector_new.data()
+        print('the type of new gram vector is:', type(gram_vector_new))
+        gram_vector = torch.cat((gram_vector, gram_vector_new), 1)
+    # gram_vector = torch.cat(gram_vector, 1)
+    vector.append(gram_vector)
+
+
+    # triu_indices = torch.nonzero(matrix[0].data).transpose(0, 1)
+    # print('the triu_indices is:', triu_indices)
+    # triu_indices = matrix[0].triu().data().cpu().nonzero().transpose(0, 1)
+    # vector_0 = matrix[0][triu_indices]
+    # vector_0 = matrix[0][triu_indices[0], triu_indices[1]].view(1, -1)
+    # print('the size of vector_0 is:', vector_0.size())
+    # vector_0 = matrix[0][np.triu_indices(len(matrix[0]))]
     # vector_1 = matrix[1].numpy()[np.triu_indices(len(matrix[1]))].view(1, -1)
     # vector_2 = matrix[2].numpy()[np.triu_indices(len(matrix[2]))].view(1, -1)
-    vector.append(torch.cat((matrix[0].view(1, -1), matrix[1].view(1, -1), matrix[2].view(1, -1)), 1))
+    # vector.append(torch.cat((matrix[0].view(1, -1), matrix[1].view(1, -1), matrix[2].view(1, -1)), 1))
     # vector.append(torch.cat((vector_0, vector_1, vector_2), 1))
 
 
@@ -304,9 +327,10 @@ print('finishing creating feature maps...')
 
 # matrix = get_style_model_and_matrix(cnn, style_img)
 
-# print(type(vector[0]))
+print('the type of vector[0] is', type(vector[0]))
+print('the length of vector[0] is', len(vector[0]))
 #
-print("Each feature map has a size of ", vector[0].size())
+# print("Each feature map has a size of ", vector[0].size())
 # new_variable = vector[0].clone()
 # print(new_variable.data)
 #print(vector[0].encode('utf-8'))
@@ -326,8 +350,8 @@ pdist = nn.PairwiseDistance(p=2)
 specified_image = 0
 # dist_min = 10000000000
 dist = []
-for i in range(num_images):
-    dist.append(pdist(vector[specified_image], vector[i]).data.cpu().numpy())
+for i in range(50):
+    dist.append(pdist(vector[specified_image], vector[i]).cpu().numpy())
     # print('finishing calculated distance', i)
     # print('the size of dist is', len(dist))
 # print('the size of the dist is', len(dist[0]))

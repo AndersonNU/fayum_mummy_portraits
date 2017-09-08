@@ -18,6 +18,7 @@ import torchvision.models as models
 import numpy as np
 import copy
 import time
+from sklearn.cluster import KMeans
 start_time = time.time()
 ######################################################################
 # Cuda
@@ -35,6 +36,7 @@ start_time = time.time()
 #
 
 use_cuda = torch.cuda.is_available()
+use_cuda = False
 dtype = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
 # dtype = torch.FloatTensor
 
@@ -56,7 +58,7 @@ dtype = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
 
 
 # desired size of the output image
-imsize = 32 if use_cuda else 128  # use small size if no gpu
+imsize = 512 if use_cuda else 128  # use small size if no gpu
 
 loader = transforms.Compose([
     transforms.Scale(imsize),  # scale imported image
@@ -75,12 +77,20 @@ import glob
 image_list = []
 filenames = []
 # This is to obtain all the file names in the folder
-for filename in glob.glob('data_fayum/faces/*.bmp'):
+for filename in glob.glob('data_fayum/faces/*'):
     # im = image_loader(filename).type(dtype)
     #im = Image.open(filename)
     filenames.append(filename)
     # image_list.append(im)
+    # Image.open(filename).save('data_fayum/groups3/'+str(filename), 'bmp')
 
+# for filename in glob.glob('data_fayum/groups3/*.bmp'):
+    # im = image_loader(filename).type(dtype)
+    #im = Image.open(filename)
+    # filenames.append(filename)
+
+
+# print(filenames)
 # print(image_list)
 # image_list[0].save('data_fayum/output/image.bmp', 'bmp')
 # print(filenames)
@@ -158,8 +168,17 @@ if use_cuda:
 
 # desired depth layers to compute style/content losses :
 content_layers_default = ['conv_4']
-# style_layers_default = ['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5']
-style_layers_default = ['conv_14','conv_15','conv_16']
+style_layers_default = ['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5']
+# style_layers_default = ['conv_1','conv_15','conv_16']
+
+def get_content_model_and_features(cnn, content_img, content_layers=content_layers_default):
+
+
+
+    return features
+
+
+
 
 def get_style_model_and_matrix(cnn, style_img, style_layers=style_layers_default):
     cnn = copy.deepcopy(cnn)
@@ -284,42 +303,46 @@ num_images = len(image_list)
 num_images = 1
 vector = []
 # for filename in filenames:
+print('the length of files are ', len(filenames))
 for i in range(len(filenames)):
 # for i in range(4):
-
+    # Loading images using functions
     style_img = image_loader(filenames[i]).type(dtype)
     # style_img = image_list[i]
     matrix = get_style_model_and_matrix(cnn, style_img)
-    print(type(matrix))
-    print('the size of matrix is:', len(matrix))
+    # print(type(matrix))
+    # print('the size of matrix is:', len(matrix))
     # print('The size of the first style layer we want is', matrix[0].size())
     # For each image, vectorizing all the gram matrix and append them together
     gram_vector = torch.FloatTensor()
-    gram_vector = gram_vector.cuda()
-    print('the type of gram_vector is', type(gram_vector))
+    # gram_vector = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
+        # gram_vector = gram_vector.cuda()
+    # print('the type of gram_vector is', type(gram_vector))
     for j in range(len(matrix)):
+        # Get the indices of upper triangular Gram matrix, since Gram matrix is symmetric, and we only need half
+        # of the matrix for the same amount of information
         triu_indices = torch.nonzero(matrix[j].data).transpose(0, 1)
-        # gram_vector.append(matrix[j][triu_indices[0], triu_indices[1]])
-        # Get the vectorized upper Gram matrix
+
+        # Get the vectorized upper Gram matrix, and use view() to make it a 2D matrix
         gram_vector_new = matrix[j][triu_indices[0], triu_indices[1]].data.view(1, -1)
+
         # gram_vector_new = gram_vector_new.data()
-        print('the type of new gram vector is:', type(gram_vector_new))
+        # print('the type of new gram vector is:', type(gram_vector_new))
         gram_vector = torch.cat((gram_vector, gram_vector_new), 1)
     # gram_vector = torch.cat(gram_vector, 1)
     vector.append(gram_vector)
 
+ve = vector[0].cpu().numpy()
+# ve = np.array(vector[0].cpu())
+for i in range(1, len(vector)):
+    ve = np.append(ve, vector[i].cpu().numpy(), axis=0)
+# K means clustering
+print(ve.shape)
+print('begin k means')
+kmeans = KMeans(n_clusters=5, random_state=0).fit(ve)
+lable = kmeans.labels_
+print(lable)
 
-    # triu_indices = torch.nonzero(matrix[0].data).transpose(0, 1)
-    # print('the triu_indices is:', triu_indices)
-    # triu_indices = matrix[0].triu().data().cpu().nonzero().transpose(0, 1)
-    # vector_0 = matrix[0][triu_indices]
-    # vector_0 = matrix[0][triu_indices[0], triu_indices[1]].view(1, -1)
-    # print('the size of vector_0 is:', vector_0.size())
-    # vector_0 = matrix[0][np.triu_indices(len(matrix[0]))]
-    # vector_1 = matrix[1].numpy()[np.triu_indices(len(matrix[1]))].view(1, -1)
-    # vector_2 = matrix[2].numpy()[np.triu_indices(len(matrix[2]))].view(1, -1)
-    # vector.append(torch.cat((matrix[0].view(1, -1), matrix[1].view(1, -1), matrix[2].view(1, -1)), 1))
-    # vector.append(torch.cat((vector_0, vector_1, vector_2), 1))
 
 
 
@@ -328,7 +351,7 @@ print('finishing creating feature maps...')
 # matrix = get_style_model_and_matrix(cnn, style_img)
 
 print('the type of vector[0] is', type(vector[0]))
-print('the length of vector[0] is', len(vector[0]))
+print('the length of vector[0] is', vector[0].size())
 #
 # print("Each feature map has a size of ", vector[0].size())
 # new_variable = vector[0].clone()
@@ -350,7 +373,7 @@ pdist = nn.PairwiseDistance(p=2)
 specified_image = 0
 # dist_min = 10000000000
 dist = []
-for i in range(50):
+for i in range(len(filenames)):
     dist.append(pdist(vector[specified_image], vector[i]).cpu().numpy())
     # print('finishing calculated distance', i)
     # print('the size of dist is', len(dist))
@@ -377,6 +400,13 @@ first_image.save('data_fayum/output/first.bmp', 'bmp')
 Image.open(filenames[index[1]]).save('data_fayum/output/second.bmp', 'bmp')
 Image.open(filenames[index[2]]).save('data_fayum/output/third.bmp', 'bmp')
 
+for i in range(len(filenames)):
+    Image.open(filenames[i]).save('data_fayum/output/'+str(lable[i])+'__'+str(i)+'.bmp', 'bmp')
+
+
+
+
+
 print("--- %s seconds ---" % (time.time() - start_time))
 
 # plt.figure()
@@ -386,4 +416,3 @@ print("--- %s seconds ---" % (time.time() - start_time))
 # plt.ioff()
 # plt.show()
 # plt.savefig('fig.png')
-

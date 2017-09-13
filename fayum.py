@@ -19,6 +19,7 @@ import numpy as np
 import copy
 import time
 from sklearn.cluster import KMeans
+import scipy
 start_time = time.time()
 ######################################################################
 # Cuda
@@ -36,7 +37,7 @@ start_time = time.time()
 #
 
 use_cuda = torch.cuda.is_available()
-use_cuda = False
+# use_cuda = False
 dtype = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
 # dtype = torch.FloatTensor
 
@@ -77,12 +78,16 @@ import glob
 image_list = []
 filenames = []
 # This is to obtain all the file names in the folder
-for filename in glob.glob('data_fayum/faces/*'):
+# for filename in glob.glob('data_fayum/faces_numbered/*'):
+for filename in glob.glob('data_fayum/faces_test/*'):
     # im = image_loader(filename).type(dtype)
     #im = Image.open(filename)
     filenames.append(filename)
     # image_list.append(im)
     # Image.open(filename).save('data_fayum/groups3/'+str(filename), 'bmp')
+
+
+
 
 # for filename in glob.glob('data_fayum/groups3/*.bmp'):
     # im = image_loader(filename).type(dtype)
@@ -299,12 +304,11 @@ def get_input_param_optimizer(input_img):
 # Here we have four inputs, the network, the, content img, style image, input image)
 # input_mage is the copy of contenct image using the clone function
 print('Finishing loading images....\nBegin to obtaining feature maps...')
-num_images = len(image_list)
-num_images = 1
+num_images = len(filenames)
 vector = []
 # for filename in filenames:
-print('the length of files are ', len(filenames))
-for i in range(len(filenames)):
+print('the length of files are ', num_images)
+for i in range(num_images):
 # for i in range(4):
     # Loading images using functions
     style_img = image_loader(filenames[i]).type(dtype)
@@ -315,19 +319,24 @@ for i in range(len(filenames)):
     # print('The size of the first style layer we want is', matrix[0].size())
     # For each image, vectorizing all the gram matrix and append them together
     gram_vector = torch.FloatTensor()
-    # gram_vector = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
-        # gram_vector = gram_vector.cuda()
+
+    # if we can use cuda, we will convert gram_vector to a cuda vector
+    if use_cuda:
+        gram_vector = gram_vector.cuda()
     # print('the type of gram_vector is', type(gram_vector))
     for j in range(len(matrix)):
+
         # Get the indices of upper triangular Gram matrix, since Gram matrix is symmetric, and we only need half
         # of the matrix for the same amount of information
         triu_indices = torch.nonzero(matrix[j].data).transpose(0, 1)
 
         # Get the vectorized upper Gram matrix, and use view() to make it a 2D matrix
+        # [triu_indices[0], triu_indices[1]] this is the index for upper Gram matrix
         gram_vector_new = matrix[j][triu_indices[0], triu_indices[1]].data.view(1, -1)
 
         # gram_vector_new = gram_vector_new.data()
         # print('the type of new gram vector is:', type(gram_vector_new))
+        # Catananate the matrix together
         gram_vector = torch.cat((gram_vector, gram_vector_new), 1)
     # gram_vector = torch.cat(gram_vector, 1)
     vector.append(gram_vector)
@@ -338,11 +347,13 @@ for i in range(1, len(vector)):
     ve = np.append(ve, vector[i].cpu().numpy(), axis=0)
 # K means clustering
 print(ve.shape)
+'''
 print('begin k means')
+
 kmeans = KMeans(n_clusters=5, random_state=0).fit(ve)
 lable = kmeans.labels_
 print(lable)
-
+'''
 
 
 
@@ -372,25 +383,34 @@ pdist = nn.PairwiseDistance(p=2)
 
 specified_image = 0
 # dist_min = 10000000000
-dist = []
-for i in range(len(filenames)):
-    dist.append(pdist(vector[specified_image], vector[i]).cpu().numpy())
+# Create the distance matrix
+dist = np.zeros((num_images, num_images))
+
+print(ve[0, :].shape, ve[1, :])
+print(np.squeeze(ve[0, :]).shape)
+for i in range(num_images):
+    for j in range(num_images):
+
+        # Get teh distance matrix between every two image
+        dist[i, j] = scipy.spatial.distance.euclidean(ve[i, :], ve[j, :])
     # print('finishing calculated distance', i)
     # print('the size of dist is', len(dist))
 # print('the size of the dist is', len(dist[0]))
 # print('dist is', dist)
 # print(dist)
-dist = np.asarray(dist)
-dist = np.squeeze(dist)
+# dist = np.asarray(dist)
+# dist = np.squeeze(dist)
 # dist_numpy = dist.numpy()
 print('converting to numpy completed...')
+print(dist)
+np.savetxt('distance_matrix.csv', dist, delimiter=',')
 # print('the type of dist is', type(dist))
 # print('the shape of dist is', np.squeeze(dist).shape)
-index = dist.argsort()[:3]
+index = dist.argsort()
 # index = dist.argmax()
 # index = np.argmin(dist_numpy)
 print(index)
-
+np.savetxt('index.csv', index, delimiter=',')
 # image_list[index[1]].save('data_fayum/output/', 'bmp')
 # print(filenames[0])
 first_image = Image.open(filenames[index[0]])
@@ -400,8 +420,8 @@ first_image.save('data_fayum/output/first.bmp', 'bmp')
 Image.open(filenames[index[1]]).save('data_fayum/output/second.bmp', 'bmp')
 Image.open(filenames[index[2]]).save('data_fayum/output/third.bmp', 'bmp')
 
-for i in range(len(filenames)):
-    Image.open(filenames[i]).save('data_fayum/output/'+str(lable[i])+'__'+str(i)+'.bmp', 'bmp')
+# for i in range(num_images):
+#     Image.open(filenames[i]).save('data_fayum/output/'+str(lable[i])+'__'+str(i)+'.bmp', 'bmp')
 
 
 
